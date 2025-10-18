@@ -19,16 +19,17 @@ class Product(models.Model):
 
 
 class Order(models.Model):
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="orders")
-    products = models.ManyToManyField(Product, related_name="orders")
-    order_date = models.DateTimeField(auto_now_add=True)
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    products = models.ManyToManyField(Product)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    order_date = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # Calculate total_amount as the sum of product prices
+        super().save(*args, **kwargs)
+        total = sum(product.price for product in self.products.all())
+        self.total_amount = total
+        super().save(update_fields=['total_amount'])
 
     def __str__(self):
         return f"Order #{self.id} - {self.customer.name}"
-
-    def calculate_total(self):
-        total = sum(product.price for product in self.products.all())
-        self.total_amount = total
-        self.save()
-        return total
