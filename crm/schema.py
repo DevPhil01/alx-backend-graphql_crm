@@ -1,62 +1,53 @@
-import graphene
-from graphene_django import DjangoObjectType
-from graphene_django.filter import DjangoFilterConnectionField
-from django.core.validators import RegexValidator
-from django.db import transaction
-from django.db.models import Sum
-from django.utils import timezone
+import django_filters
 from .models import Customer, Product, Order
-from .filters import CustomerFilter, ProductFilter, OrderFilter
 
+class CustomerFilter(django_filters.FilterSet):
+    # Case-insensitive partial match filters
+    name = django_filters.CharFilter(field_name='name', lookup_expr='icontains')
+    email = django_filters.CharFilter(field_name='email', lookup_expr='icontains')
+    # Date range filters
+    created_at__gte = django_filters.DateFilter(field_name='created_at', lookup_expr='gte')
+    created_at__lte = django_filters.DateFilter(field_name='created_at', lookup_expr='lte')
+    # Custom filter for phone pattern
+    phone_pattern = django_filters.CharFilter(method='filter_phone_pattern')
 
-# -------------------- GraphQL Types --------------------
-class CustomerType(DjangoObjectType):
     class Meta:
         model = Customer
-        filterset_class = CustomerFilter
-        interfaces = (graphene.relay.Node,)
+        fields = ['name', 'email', 'created_at', 'phone']
+
+    def filter_phone_pattern(self, queryset, name, value):
+        # Example: match numbers starting with '+1'
+        if value:
+            return queryset.filter(phone__startswith=value)
+        return queryset
 
 
-class ProductType(DjangoObjectType):
+class ProductFilter(django_filters.FilterSet):
+    # Partial name match
+    name = django_filters.CharFilter(field_name='name', lookup_expr='icontains')
+    # Range filters for price and stock
+    price__gte = django_filters.NumberFilter(field_name='price', lookup_expr='gte')
+    price__lte = django_filters.NumberFilter(field_name='price', lookup_expr='lte')
+    stock__gte = django_filters.NumberFilter(field_name='stock', lookup_expr='gte')
+    stock__lte = django_filters.NumberFilter(field_name='stock', lookup_expr='lte')
+
     class Meta:
         model = Product
-        filterset_class = ProductFilter
-        interfaces = (graphene.relay.Node,)
+        fields = ['name', 'price', 'stock']
 
 
-class OrderType(DjangoObjectType):
+class OrderFilter(django_filters.FilterSet):
+    # Range filters
+    total_amount__gte = django_filters.NumberFilter(field_name='total_amount', lookup_expr='gte')
+    total_amount__lte = django_filters.NumberFilter(field_name='total_amount', lookup_expr='lte')
+    order_date__gte = django_filters.DateFilter(field_name='order_date', lookup_expr='gte')
+    order_date__lte = django_filters.DateFilter(field_name='order_date', lookup_expr='lte')
+    # Related field lookups
+    customer_name = django_filters.CharFilter(field_name='customer__name', lookup_expr='icontains')
+    product_name = django_filters.CharFilter(field_name='product__name', lookup_expr='icontains')
+    # Filter orders that include a specific product ID
+    product_id = django_filters.NumberFilter(field_name='product__id', lookup_expr='exact')
+
     class Meta:
         model = Order
-        filterset_class = OrderFilter
-        interfaces = (graphene.relay.Node,)
-
-
-# -------------------- Input Types --------------------
-class CustomerInput(graphene.InputObjectType):
-    name = graphene.String(required=True)
-    email = graphene.String(required=True)
-    phone = graphene.String()
-
-
-class ProductInput(graphene.InputObjectType):
-    name = graphene.String(required=True)
-    price = graphene.Float(required=True)
-    stock = graphene.Int(default_value=0)
-
-
-class OrderInput(graphene.InputObjectType):
-    customer_id = graphene.ID(required=True)
-    product_ids = graphene.List(graphene.ID, required=True)
-    order_date = graphene.DateTime()
-
-
-# -------------------- Mutations --------------------
-class CreateCustomer(graphene.Mutation):
-    class Arguments:
-        input = CustomerInput(required=True)
-
-    customer = graphene.Field(CustomerType)
-    message = graphene.String()
-
-    def mutate(self, info, input):
-        # Validate unique email
+        fields = ['total_amount', 'order_date', 'customer_name', 'product_name']
