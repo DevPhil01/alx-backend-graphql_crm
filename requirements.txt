@@ -4,3 +4,5 @@ django-filter>=23.5
 requests>=2.31.0
 gql[requests]>=3.4.1
 django-crontab>=0.7.1
+celery
+redis
