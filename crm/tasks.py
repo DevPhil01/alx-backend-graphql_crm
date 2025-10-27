@@ -1,63 +1,61 @@
+import requests
+import datetime
 from celery import shared_task
-from gql import gql, Client
-from gql.transport.requests import RequestsHTTPTransport
-from datetime import datetime
-import os
 
 @shared_task
 def generate_crm_report():
     """
-    Generates a weekly CRM report using GraphQL and logs it to /tmp/crm_report_log.txt.
+    Generates a weekly CRM report and logs it to /tmp/crm_report_log.txt.
+    The report includes:
+    - Total number of customers
+    - Total number of orders
+    - Total revenue (sum of total_amount)
     """
     try:
-        # Define GraphQL transport
-        transport = RequestsHTTPTransport(
-            url='http://localhost:8000/graphql/',
-            use_json=True,
-        )
+        # GraphQL endpoint
+        url = "http://localhost:8000/graphql"
 
-        # Create client
-        client = Client(transport=transport, fetch_schema_from_transport=True)
-
-        # GraphQL query to fetch customers, orders, and revenue
-        query = gql("""
-        {
+        # GraphQL query
+        query = """
+        query {
             allCustomers {
-                id
+                totalCount
             }
             allOrders {
-                id
-                totalAmount
+                totalCount
+                edges {
+                    node {
+                        totalAmount
+                    }
+                }
             }
         }
-        """)
+        """
 
-        # Execute query
-        result = client.execute(query)
+        response = requests.post(url, json={"query": query})
+        data = response.json().get("data", {})
 
-        total_customers = len(result.get("allCustomers", []))
-        orders = result.get("allOrders", [])
-        total_orders = len(orders)
-        total_revenue = sum(order.get("totalAmount", 0) for order in orders)
+        total_customers = data.get("allCustomers", {}).get("totalCount", 0)
+        all_orders = data.get("allOrders", {})
+        total_orders = all_orders.get("totalCount", 0)
 
-        # Prepare log message
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_message = (
-            f"{timestamp} - Report: {total_customers} customers, "
-            f"{total_orders} orders, {total_revenue} total revenue\n"
-        )
+        # Calculate total revenue
+        total_revenue = 0
+        if "edges" in all_orders:
+            for edge in all_orders["edges"]:
+                node = edge.get("node", {})
+                total_revenue += node.get("totalAmount", 0)
 
-        # Ensure /tmp directory exists and log to file
-        log_path = "/tmp/crm_report_log.txt"
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        # Log report to file
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_message = f"{now} - Report: {total_customers} customers, {total_orders} orders, {total_revenue} revenue\n"
 
-        with open(log_path, "a") as log_file:
-            log_file.write(log_message)
+        with open("/tmp/crm_report_log.txt", "a") as logfile:
+            logfile.write(log_message)
 
-        print("CRM weekly report generated successfully.")
+        print("CRM weekly report generated successfully!")
 
     except Exception as e:
-        error_message = f"Error generating CRM report: {str(e)}\n"
-        with open("/tmp/crm_report_log.txt", "a") as log_file:
-            log_file.write(error_message)
-        print(error_message)
+        with open("/tmp/crm_report_log.txt", "a") as logfile:
+            logfile.write(f"Error generating report: {str(e)}\n")
+        print(f"Error: {e}")
